@@ -26,7 +26,7 @@ const ID="1HLzYM7yCjFoHO3x2FJ7Mq-TZCRUDRy8uTtShqCkeETw";
 const SHEETS={main:"Main",literary:"Literary",folk:"Folk Trophy"};
 let active="main",datasets={main:null,literary:null,folk:null};
 const CATEGORY_NAMES={main:"Main Events",literary:"Literary Trophy",folk:"Folk Trophy"};
-const LITERARY_EVENTS=["elocution eng","debate eng","poetical symp.","elocution hin/pbi"];
+const LITERARY_EVENTS=["elocution eng","debate eng","poetical symp.","elocution hin/pbi","quiz","debate pbi/hindi"];
 function isLiteraryEvent(name){const n=clean(name).toLowerCase();return LITERARY_EVENTS.some(x=>n.startsWith(x));}
 const $=id=>document.getElementById(id);
 const clean=s=>String(s??"").replace(/\s+/g," ").trim();
