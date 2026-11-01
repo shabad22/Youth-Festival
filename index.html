@@ -53,7 +53,25 @@ function isTotal(s){return /^total\b/i.test(clean(s))}
 function loadSheet(key){return new Promise((resolve,reject)=>{const cb="gviz_"+key+"_"+Date.now(),script=document.createElement("script");let done=false;const timer=setTimeout(()=>finish(new Error("Connection timed out. Please try refreshing.")),16000);function finish(err,data){if(done)return;done=true;clearTimeout(timer);script.remove();try{delete window[cb]}catch(_){}err?reject(err):resolve(data)}window[cb]=j=>{if(j.status==="error")return finish(new Error(j.errors?.[0]?.detailed_message||"Google Sheets returned an error."));finish(null,j.table)};script.onerror=()=>finish(new Error("Unable to load results. Please check that the Google Sheet is shared as Anyone with the link – Viewer."));script.src=`https://docs.google.com/spreadsheets/d/${ID}/gviz/tq?sheet=${encodeURIComponent(SHEETS[key])}&tqx=${encodeURIComponent("out:json;responseHandler:"+cb)}&t=${Date.now()}`;document.head.appendChild(script)})}
 function parseTable(t){const cols=t.cols.map((c,i)=>clean(c.label||c.id||`Column ${i+1}`));const data=t.rows.map(r=>cols.map((_,i)=>{const c=r.c?.[i];return c?(c.f??c.v??""):""}));const colleges=cols.slice(1).map((name,i)=>{const raw=clean(name||`College ${i+1}`),m=raw.match(/\(([^)]+)\)/);return{name:raw.replace(/\s*\([^)]+\)\s*$/,"").trim(),code:m?m[1].trim():"",full:raw,index:i}});const sections=[];let current={date:"Events",rows:[],totals:null};for(const row of data){const label=clean(row[0]);if(!label&&row.every(v=>!clean(v)))continue;if(isTotal(label)){current.totals=row.slice(1).map(num);current.date=label.replace(/^total\s*/i,"").replace(/[()]/g,"").trim()||"Daily Total";if(current.rows.length||current.totals.some(v=>v!==0))sections.push(current);current={date:"Events",rows:[],totals:null}}else if(label)current.rows.push(row)}if(current.rows.length)sections.push(current);return{colleges,sections}}
 function allRows(d){return d.sections.flatMap(s=>s.rows.map(r=>({date:s.date,row:r})))}
-function totalForCollege(d,i){return d.sections.reduce((sum,s)=>sum+(s.totals?.[i]??s.rows.reduce((a,r)=>a+num(r[i+1]),0)),0)}
+// The sheet's Total rows are cumulative: convert them to per-day increments for display.
+function sectionDailyTotals(d,sectionIndex){
+ const section=d.sections[sectionIndex];
+ if(!section)return d.colleges.map(()=>0);
+ const current=section.totals??d.colleges.map(c=>section.rows.reduce((a,r)=>a+num(r[c.index+1]),0));
+ if(!section.totals)return current;
+ let previous=d.colleges.map(()=>0);
+ for(let i=sectionIndex-1;i>=0;i--){
+  if(d.sections[i].totals){previous=d.sections[i].totals;break;}
+ }
+ return current.map((value,i)=>Math.max(0,num(value)-num(previous[i])));
+}
+function totalForCollege(d,i){
+ for(let k=d.sections.length-1;k>=0;k--){
+  const s=d.sections[k];
+  if(s.totals)return num(s.totals[i]);
+ }
+ return d.sections.reduce((sum,s)=>sum+s.rows.reduce((a,r)=>a+num(r[i+1]),0),0);
+}
 function grandTotal(d){return d.colleges.reduce((s,c)=>s+totalForCollege(d,c.index),0)}
 function draw(){const d=datasets[active];if(!d)return;const q=clean($("search").value).toLowerCase();const collegeMatches=d.colleges.filter(c=>[c.name,c.code,c.full].some(v=>v.toLowerCase().includes(q)));const exactCollege=q?collegeMatches.find(c=>c.name.toLowerCase()===q||c.code.toLowerCase()===q):null;const selectedCollege=exactCollege||(q&&collegeMatches.length===1?collegeMatches[0]:null);const eventMatches=allRows(d).filter(x=>clean(x.row[0]).toLowerCase().includes(q));const collegeMode=!!q&&(selectedCollege||collegeMatches.length>0)&&(!eventMatches.length||selectedCollege||collegeMatches.length===1);
 $("events").textContent=fmt(allRows(d).length);$("collegeCount").textContent=d.colleges.length;$("grandTotal").textContent=fmt(grandTotal(d));$("clear").style.display=q?"block":"none";renderChips(d,collegeMatches);
@@ -65,22 +83,20 @@ function qSafeMatches(d){return d.colleges}
 function renderCollege(d,c){
  const eventList=[];
  const byDay=[];
- for(const s of d.sections){
-  let points=0,events=[];
+ d.sections.forEach((s,sectionIndex)=>{
+  let events=[];
   for(const r of s.rows){
    const p=num(r[c.index+1]);
    if(p>0){
     const position=positionFor(r[0],p);
-    points+=p;
     events.push({name:r[0],points:p,position});
    }
   }
-  const sheetTotal=s.totals?.[c.index];
-  const total=sheetTotal??points;
-  byDay.push({date:s.date,total,events});
+  const dailyTotal=sectionDailyTotals(d,sectionIndex)[c.index]??events.reduce((a,e)=>a+e.points,0);
+  byDay.push({date:s.date,total:dailyTotal,events});
   eventList.push(...events.map(e=>({...e,date:s.date})));
- }
- const total=byDay.reduce((a,x)=>a+x.total,0);
+ });
+ const total=totalForCollege(d,c.index);
  const participated=eventList.length;
  const firsts=eventList.filter(e=>e.position==="1st").length;
  const seconds=eventList.filter(e=>e.position==="2nd").length;
@@ -98,13 +114,22 @@ function renderCollege(d,c){
    <div class="summary-box position-summary second-summary"><span>🥈 Second positions</span><strong>${fmt(seconds)}</strong><small>Events secured in 2nd place</small></div>
    <div class="summary-box position-summary third-summary"><span>🥉 Third positions</span><strong>${fmt(thirds)}</strong><small>Events secured in 3rd place</small></div>
   </div>
-  <div class="panel-head"><h2>Day-wise performance</h2><span class="meta">Points earned each day</span></div>
+  <div class="panel-head"><h2>Day-wise performance</h2><span class="meta">Points earned on each day (non-cumulative)</span></div>
   <div class="day-list">${byDay.filter(x=>x.events.length||x.total>0).map(x=>`<div class="day-card"><span>${esc(x.date)}</span><b>${fmt(x.total)} <small style="font-size:10px;color:#8492a5">pts</small></b></div>`).join("")}</div>
   <div class="panel-head"><h2>Events participated in</h2><span class="meta">${participated} event records</span></div>
   ${participated?`<div class="table-scroll"><table><thead><tr><th>Event</th><th>Position</th><th>Day</th><th>Points</th></tr></thead><tbody>${eventList.map(e=>`<tr><td>${esc(visibleEventName(e.name))}</td><td>${e.position?`<span class="position-badge">${e.position}</span>`:"—"}</td><td>${esc(e.date)}</td><td class="event-point">${fmt(e.points)}</td></tr>`).join("")}</tbody></table></div>`:`<div class="empty">No event points have been recorded for this college yet.</div>`}
  </section>`;
 }
-function renderSection(d,s,q){const totals=d.colleges.map(c=>s.totals?.[c.index]??s.rows.reduce((a,r)=>a+num(r[c.index+1]),0));const ranking=d.colleges.map(c=>({...c,value:totals[c.index]})).sort((a,b)=>b.value-a.value);const rankHtml=`<div class="rank-grid">${ranking.map((r,i)=>`<div class="rank"><span class="name">${esc(r.name)}${r.code?` (${esc(r.code)})`:""}</span><b>${fmt(r.value)}</b><em>${i===0&&r.value>0?"Top score":"Rank "+(i+1)}</em></div>`).join("")}</div>`;const head=`<thead><tr><th>Event</th>${d.colleges.map(c=>`<th>${esc(c.name)}${c.code?`<br>(${esc(c.code)})`:""}</th>`).join("")}</tr></thead>`;const body=s.rows.map(r=>`<tr><td>${eventLabel(r[0])}</td>${d.colleges.map(c=>`<td class="score">${scoreMarkup(r[0],r[c.index+1])}</td>`).join("")}</tr>`).join("");const totalRow=`<tr class="total-row"><td>Day Total · ${esc(s.date)}</td>${totals.map(v=>`<td>${fmt(v)}</td>`).join("")}</tr>`;return `<section class="panel"><div class="panel-head"><h2>${esc(s.date)} · ${active==="folk"?"Folk Trophy":"Main Events"}</h2><span class="meta">${s.rows.length} events · ${fmt(totals.reduce((a,b)=>a+b,0))} points</span></div>${rankHtml}<div class="table-scroll"><table>${head}<tbody>${body}${s.totals?totalRow:""}</tbody></table></div></section>`}
+function renderSection(d,s,q){
+ const sectionIndex=d.sections.indexOf(s);
+ const totals=sectionDailyTotals(d,sectionIndex);
+ const ranking=d.colleges.map(c=>({...c,value:totals[c.index]})).sort((a,b)=>b.value-a.value);
+ const rankHtml=`<div class="rank-grid">${ranking.map((r,i)=>`<div class="rank"><span class="name">${esc(r.name)}${r.code?` (${r.code})`:""}</span><b>${fmt(r.value)}</b><em>${i===0&&r.value>0?"Top daily score":"Rank "+(i+1)}</em></div>`).join("")}</div>`;
+ const head=`<thead><tr><th>Event</th>${d.colleges.map(c=>`<th>${esc(c.name)}${c.code?`<br>(${c.code})`:""}</th>`).join("")}</tr></thead>`;
+ const body=s.rows.map(r=>`<tr><td>${eventLabel(r[0])}</td>${d.colleges.map(c=>`<td class="score">${scoreMarkup(r[0],r[c.index+1])}</td>`).join("")}</tr>`).join("");
+ const totalRow=`<tr class="total-row"><td>Daily Total · ${esc(s.date)}</td>${totals.map(v=>`<td>${fmt(v)}</td>`).join("")}</tr>`;
+ return `<section class="panel"><div class="panel-head"><h2>${esc(s.date)} · ${active==="folk"?"Folk Trophy":"Main Events"}</h2><span class="meta">${s.rows.length} events · ${fmt(totals.reduce((a,b)=>a+b,0))} points earned that day</span></div>${rankHtml}<div class="table-scroll"><table>${head}<tbody>${body}${s.totals?totalRow:""}</tbody></table></div></section>`;
+}
 async function refresh(){const b=$("refresh");b.textContent="Loading…";b.disabled=true;$("error").style.display="none";try{const table=await loadSheet(active);datasets[active]=parseTable(table);draw();$("lastUpdated").textContent="Updated at "+new Date().toLocaleTimeString()+" · Refreshes automatically every 30 seconds"}catch(e){$("error").style.display="block";$("error").textContent=e.message;if(!datasets[active])$("content").innerHTML='<div class="panel empty">Results are temporarily unavailable. Please refresh in a moment.</div>'}finally{b.textContent="↻  Refresh Results";b.disabled=false}}
 document.querySelectorAll(".tab").forEach(b=>b.addEventListener("click",()=>{active=b.dataset.tab;document.querySelectorAll(".tab").forEach(x=>x.classList.toggle("active",x===b));$("search").value="";if(datasets[active])draw();else refresh()}));$("search").addEventListener("input",draw);$("clear").addEventListener("click",()=>{$("search").value="";draw();$("search").focus()});$("refresh").addEventListener("click",refresh);refresh();setInterval(()=>{if(!document.hidden)refresh()},30000);
 </script>
