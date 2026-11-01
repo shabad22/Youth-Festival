@@ -76,8 +76,10 @@ function grandTotal(d){return d.colleges.reduce((s,c)=>s+totalForCollege(d,c.ind
 function renderCategoryRanking(d){
  const ranked=d.colleges.map(c=>({...c,value:totalForCollege(d,c.index)})).sort((a,b)=>b.value-a.value);
  if(!ranked.length)return "";
- const top=ranked.slice(0,2);
- return `<section class="category-rank-card"><h3>${active==="folk"?"Folk Trophy":"Main Events"} · Overall College Ranking</h3>${top.map((c,i)=>`<div class="category-rank-row"><div><div class="category-rank-name"><span class="category-rank-place">${i===0?"1st":"2nd"}</span>${esc(c.name)}${c.code?` (${esc(c.code)})`:""}</div><div class="category-rank-meta">${i===0?"Highest overall points":"Second-highest overall points"}</div></div><div class="category-rank-points">${fmt(c.value)} <small>pts</small></div></div>`).join("")}</section>`;
+ const top=ranked.slice(0,3);
+ const places=["1st","2nd","3rd"];
+ const descriptions=["Highest overall points","Second-highest overall points","Third-highest overall points"];
+ return `<section class="category-rank-card"><h3>${active==="folk"?"Folk Trophy":"Main Events"} · Overall College Ranking</h3>${top.map((c,i)=>`<div class="category-rank-row"><div><div class="category-rank-name"><span class="category-rank-place">${places[i]}</span>${esc(c.name)}${c.code?` (${esc(c.code)})`:""}</div><div class="category-rank-meta">${descriptions[i]}</div></div><div class="category-rank-points">${fmt(c.value)} <small>pts</small></div></div>`).join("")}</section>`;
 }
 function draw(){const d=datasets[active];if(!d)return;const q=clean($("search").value).toLowerCase();const collegeMatches=d.colleges.filter(c=>[c.name,c.code,c.full].some(v=>v.toLowerCase().includes(q)));const exactCollege=q?collegeMatches.find(c=>c.name.toLowerCase()===q||c.code.toLowerCase()===q):null;const selectedCollege=exactCollege||(q&&collegeMatches.length===1?collegeMatches[0]:null);const eventMatches=allRows(d).filter(x=>clean(x.row[0]).toLowerCase().includes(q));const collegeMode=!!q&&(selectedCollege||collegeMatches.length>0)&&(!eventMatches.length||selectedCollege||collegeMatches.length===1);
 $("events").textContent=fmt(allRows(d).length);$("collegeCount").textContent=d.colleges.length;$("grandTotal").textContent=fmt(grandTotal(d));$("clear").style.display=q?"block":"none";renderChips(d,collegeMatches);$("categoryRanking").innerHTML=renderCategoryRanking(d);
