@@ -87,7 +87,12 @@ function renderCategoryRanking(d){
 function draw(){const d=datasets[active];if(!d)return;const q=clean($("search").value).toLowerCase();const collegeMatches=d.colleges.filter(c=>[c.name,c.code,c.full].some(v=>v.toLowerCase().includes(q)));const exactCollege=q?collegeMatches.find(c=>c.name.toLowerCase()===q||c.code.toLowerCase()===q):null;const selectedCollege=exactCollege||(q&&collegeMatches.length===1?collegeMatches[0]:null);const eventMatches=allRows(d).filter(x=>clean(x.row[0]).toLowerCase().includes(q));const collegeMode=!!q&&(selectedCollege||collegeMatches.length>0)&&(!eventMatches.length||selectedCollege||collegeMatches.length===1);
 $("events").textContent=fmt(allRows(d).length);$("collegeCount").textContent=d.colleges.length;$("grandTotal").textContent=fmt(grandTotal(d));$("clear").style.display=q?"block":"none";renderChips(d,collegeMatches);$("categoryRanking").innerHTML=renderCategoryRanking(d);
 if(collegeMode){$("categoryRanking").style.display="none";const targets=selectedCollege?[selectedCollege]:collegeMatches;$("content").innerHTML=targets.map(c=>renderCollege(d,c)).join("");return}else{$("categoryRanking").style.display="grid"}
-const filtered=d.sections.map((s,index)=>({...s,_sourceIndex:index,rows:q?s.rows.filter(r=>clean(r[0]).toLowerCase().includes(q)):s.rows})).filter(s=>s.rows.length);if(!filtered.length){$("content").innerHTML=`<div class="panel empty"><div style="font-size:28px;margin-bottom:8px">⌕</div><b>No matching results found</b><div style="font-size:12px;margin-top:6px">Try a college name, college code or event name.</div></div>`;return}
+const dateOrder={"01/10/26":0,"01/11/26":0,"31/10/26":1,"30/10/26":2};
+const filtered=d.sections.map((s,index)=>({...s,_sourceIndex:index,rows:q?s.rows.filter(r=>clean(r[0]).toLowerCase().includes(q)):s.rows})).filter(s=>s.rows.length).sort((a,b)=>{
+ const da=clean(a.date),db=clean(b.date);
+ const pa=dateOrder[da]??99,pb=dateOrder[db]??99;
+ return pa-pb||a._sourceIndex-b._sourceIndex;
+});if(!filtered.length){$("content").innerHTML=`<div class="panel empty"><div style="font-size:28px;margin-bottom:8px">⌕</div><b>No matching results found</b><div style="font-size:12px;margin-top:6px">Try a college name, college code or event name.</div></div>`;return}
 $("content").innerHTML=filtered.map(s=>renderSection(d,s,q)).join("")}
 function renderChips(d,matches){const list=qSafeMatches(d);$("quickColleges").innerHTML=list.map(c=>`<button class="college-chip" data-college="${esc(c.full)}">${esc(c.name)}${c.code?` (${esc(c.code)})`:""}</button>`).join("");document.querySelectorAll("[data-college]").forEach(b=>b.addEventListener("click",()=>{$("search").value=b.dataset.college;draw()}))}
 function qSafeMatches(d){return d.colleges}
