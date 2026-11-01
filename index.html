@@ -13,7 +13,7 @@
 <body>
 <header class="hero"><div class="wrap"><div class="hero-top"><div class="brand"><div class="crest">YF<br>26</div><div><div class="eyebrow">Live Results & Scoreboard</div><h1>Youth Festival 2026</h1></div></div><div class="live"><i class="dot"></i><span>LIVE SCOREBOARD</span></div></div><p>Explore event results, college performance and day-wise points in one place.</p></div></header>
 <main class="main">
-<nav class="tabs"><button class="tab active" data-tab="main">Main Events</button><button class="tab" data-tab="folk">Folk Trophy</button></nav>
+<nav class="tabs"><button class="tab active" data-tab="main">Main Events</button><button class="tab" data-tab="literary">Literary Trophy</button><button class="tab" data-tab="folk">Folk Trophy</button></nav>
 <div class="toolbar"><div class="searchbox"><span class="glass">⌕</span><input id="search" type="search" autocomplete="off" placeholder="Search a college name, code or event…"><button class="clear" id="clear" aria-label="Clear search">×</button></div><button class="btn" id="refresh">↻ &nbsp;Refresh Results</button></div>
 <div class="hint">Search a college to view its points, positions and event participation. Position rules: Single (S) — 5/3/1 points; Group (G) — 7/5/3 points. Search an event to filter the score table.</div>
 <div class="quick-colleges" id="quickColleges"></div>
@@ -23,8 +23,11 @@
 </main>
 <script>
 const ID="1HLzYM7yCjFoHO3x2FJ7Mq-TZCRUDRy8uTtShqCkeETw";
-const SHEETS={main:"Main",folk:"Folk Trophy"};
-let active="main",datasets={main:null,folk:null};
+const SHEETS={main:"Main",literary:"Literary",folk:"Folk Trophy"};
+let active="main",datasets={main:null,literary:null,folk:null};
+const CATEGORY_NAMES={main:"Main Events",literary:"Literary Trophy",folk:"Folk Trophy"};
+const LITERARY_EVENTS=["elocution","debate","poetical symp.","elocution hin/pbi"];
+function isLiteraryEvent(name){const n=clean(name).toLowerCase().replace(/\\s+/g," ");return LITERARY_EVENTS.some(x=>n.startsWith(x));}
 const $=id=>document.getElementById(id);
 const clean=s=>String(s??"").replace(/\s+/g," ").trim();
 function esc(x){return String(x??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]))}
@@ -51,7 +54,7 @@ function scoreMarkup(name,value){
 function eventLabel(name){return esc(visibleEventName(name))}
 function isTotal(s){return /^total\b/i.test(clean(s))}
 function loadSheet(key){return new Promise((resolve,reject)=>{const cb="gviz_"+key+"_"+Date.now(),script=document.createElement("script");let done=false;const timer=setTimeout(()=>finish(new Error("Connection timed out. Please try refreshing.")),16000);function finish(err,data){if(done)return;done=true;clearTimeout(timer);script.remove();try{delete window[cb]}catch(_){}err?reject(err):resolve(data)}window[cb]=j=>{if(j.status==="error")return finish(new Error(j.errors?.[0]?.detailed_message||"Google Sheets returned an error."));finish(null,j.table)};script.onerror=()=>finish(new Error("Unable to load results. Please check that the Google Sheet is shared as Anyone with the link – Viewer."));script.src=`https://docs.google.com/spreadsheets/d/${ID}/gviz/tq?sheet=${encodeURIComponent(SHEETS[key])}&tqx=${encodeURIComponent("out:json;responseHandler:"+cb)}&t=${Date.now()}`;document.head.appendChild(script)})}
-function parseTable(t){const cols=t.cols.map((c,i)=>clean(c.label||c.id||`Column ${i+1}`));const data=t.rows.map(r=>cols.map((_,i)=>{const c=r.c?.[i];return c?(c.f??c.v??""):""}));const colleges=cols.slice(1).map((name,i)=>{const raw=clean(name||`College ${i+1}`),m=raw.match(/\(([^)]+)\)/);return{name:raw.replace(/\s*\([^)]+\)\s*$/,"").trim(),code:m?m[1].trim():"",full:raw,index:i}});const sections=[];let current={date:"Events",rows:[],totals:null};for(const row of data){const label=clean(row[0]);if(!label&&row.every(v=>!clean(v)))continue;if(isTotal(label)){current.totals=row.slice(1).map(num);current.date=label.replace(/^total\s*/i,"").replace(/[()]/g,"").trim()||"Daily Total";if(current.rows.length||current.totals.some(v=>v!==0))sections.push(current);current={date:"Events",rows:[],totals:null}}else if(label)current.rows.push(row)}if(current.rows.length)sections.push(current);return{colleges,sections}}
+function parseTable(t){const cols=t.cols.map((c,i)=>clean(c.label||c.id||`Column ${i+1}`));const data=t.rows.map(r=>cols.map((_,i)=>{const c=r.c?.[i];return c?(c.f??c.v??""):""}));const colleges=cols.slice(1).map((name,i)=>{const raw=clean(name||`College ${i+1}`),m=raw.match(/\(([^)]+)\)/);return{name:raw.replace(/\s*\([^)]+\)\s*$/,"").trim(),code:m?m[1].trim():"",full:raw,index:i}});const sections=[];let current={date:"Events",rows:[],totals:null};for(const row of data){const label=clean(row[0]);if(!label&&row.every(v=>!clean(v)))continue;if(isTotal(label)){current.totals=row.slice(1).map(num);current.date=label.replace(/^total\s*/i,"").replace(/[()]/g,"").trim()||"Daily Total";if(current.rows.length||current.totals.some(v=>v!==0))sections.push(current);current={date:"Events",rows:[],totals:null}}else if(label)current.rows.push(row)}if(current.rows.length)sections.push(current);if(active==="literary"){for(const section of sections){section.rows=section.rows.filter(row=>isLiteraryEvent(row[0]));section.totals=null;}return{colleges,sections:sections.filter(section=>section.rows.length)}}return{colleges,sections}}
 function allRows(d){return d.sections.flatMap(s=>s.rows.map(r=>({date:s.date,row:r})))}
 // The sheet's Total rows are cumulative: convert them to per-day increments for display.
 function sectionDailyTotals(d,sectionIndex){
@@ -79,7 +82,7 @@ function renderCategoryRanking(d){
  const top=ranked.slice(0,3);
  const places=["1st","2nd","3rd"];
  const descriptions=["Highest overall points","Second-highest overall points","Third-highest overall points"];
- return `<section class="category-rank-card"><h3>${active==="folk"?"Folk Trophy":"Main Events"} · Overall College Ranking</h3>${top.map((c,i)=>`<div class="category-rank-row"><div><div class="category-rank-name"><span class="category-rank-place">${places[i]}</span>${esc(c.name)}${c.code?` (${esc(c.code)})`:""}</div><div class="category-rank-meta">${descriptions[i]}</div></div><div class="category-rank-points">${fmt(c.value)} <small>pts</small></div></div>`).join("")}</section>`;
+ return `<section class="category-rank-card"><h3>${CATEGORY_NAMES[active]} · Overall College Ranking</h3>${top.map((c,i)=>`<div class="category-rank-row"><div><div class="category-rank-name"><span class="category-rank-place">${places[i]}</span>${esc(c.name)}${c.code?` (${esc(c.code)})`:""}</div><div class="category-rank-meta">${descriptions[i]}</div></div><div class="category-rank-points">${fmt(c.value)} <small>pts</small></div></div>`).join("")}</section>`;
 }
 function draw(){const d=datasets[active];if(!d)return;const q=clean($("search").value).toLowerCase();const collegeMatches=d.colleges.filter(c=>[c.name,c.code,c.full].some(v=>v.toLowerCase().includes(q)));const exactCollege=q?collegeMatches.find(c=>c.name.toLowerCase()===q||c.code.toLowerCase()===q):null;const selectedCollege=exactCollege||(q&&collegeMatches.length===1?collegeMatches[0]:null);const eventMatches=allRows(d).filter(x=>clean(x.row[0]).toLowerCase().includes(q));const collegeMode=!!q&&(selectedCollege||collegeMatches.length>0)&&(!eventMatches.length||selectedCollege||collegeMatches.length===1);
 $("events").textContent=fmt(allRows(d).length);$("collegeCount").textContent=d.colleges.length;$("grandTotal").textContent=fmt(grandTotal(d));$("clear").style.display=q?"block":"none";renderChips(d,collegeMatches);$("categoryRanking").innerHTML=renderCategoryRanking(d);
@@ -112,7 +115,7 @@ function renderCollege(d,c){
  return `<section class="panel">
   <div class="panel-head">
    <div class="college-title"><div class="college-mark">${esc(c.code||c.name.slice(0,2).toUpperCase())}</div><div><h2 style="margin:0">${esc(c.name)}</h2><div class="meta">College performance ${c.code?`· Code ${esc(c.code)}`:""}</div></div></div>
-   <span class="meta">${active==="folk"?"Folk Trophy":"Main Events"}</span>
+   <span class="meta">${CATEGORY_NAMES[active]}</span>
   </div>
   <div class="college-summary">
    <div class="summary-box"><span>Total points</span><strong>${fmt(total)}</strong></div>
@@ -136,7 +139,7 @@ function renderSection(d,s,q){
  const head=`<thead><tr><th>Event</th>${d.colleges.map(c=>`<th>${esc(c.name)}${c.code?`<br>(${c.code})`:""}</th>`).join("")}</tr></thead>`;
  const body=s.rows.map(r=>`<tr><td>${eventLabel(r[0])}</td>${d.colleges.map(c=>`<td class="score">${scoreMarkup(r[0],r[c.index+1])}</td>`).join("")}</tr>`).join("");
  const totalRow=`<tr class="total-row"><td>Daily Total · ${esc(s.date)}</td>${totals.map(v=>`<td>${fmt(v)}</td>`).join("")}</tr>`;
- return `<section class="panel"><div class="panel-head"><h2>${esc(s.date)} · ${active==="folk"?"Folk Trophy":"Main Events"}</h2><span class="meta">${s.rows.length} events · ${fmt(totals.reduce((a,b)=>a+b,0))} points earned that day</span></div>${rankHtml}<div class="table-scroll"><table>${head}<tbody>${body}${s.totals?totalRow:""}</tbody></table></div></section>`;
+ return `<section class="panel"><div class="panel-head"><h2>${esc(s.date)} · ${CATEGORY_NAMES[active]}</h2><span class="meta">${s.rows.length} events · ${fmt(totals.reduce((a,b)=>a+b,0))} points earned that day</span></div>${rankHtml}<div class="table-scroll"><table>${head}<tbody>${body}${s.totals?totalRow:""}</tbody></table></div></section>`;
 }
 async function refresh(){const b=$("refresh");b.textContent="Loading…";b.disabled=true;$("error").style.display="none";try{const table=await loadSheet(active);datasets[active]=parseTable(table);draw();$("lastUpdated").textContent="Updated at "+new Date().toLocaleTimeString()+" · Refreshes automatically every 30 seconds"}catch(e){$("error").style.display="block";$("error").textContent=e.message;if(!datasets[active])$("content").innerHTML='<div class="panel empty">Results are temporarily unavailable. Please refresh in a moment.</div>'}finally{b.textContent="↻  Refresh Results";b.disabled=false}}
 document.querySelectorAll(".tab").forEach(b=>b.addEventListener("click",()=>{active=b.dataset.tab;document.querySelectorAll(".tab").forEach(x=>x.classList.toggle("active",x===b));$("search").value="";if(datasets[active])draw();else refresh()}));$("search").addEventListener("input",draw);$("clear").addEventListener("click",()=>{$("search").value="";draw();$("search").focus()});$("refresh").addEventListener("click",refresh);refresh();setInterval(()=>{if(!document.hidden)refresh()},30000);
